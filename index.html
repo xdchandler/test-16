@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Basoon</title>
+<style>
+  body, html { margin:0; padding:0; font-family: Arial,sans-serif; overflow-x:hidden; height:100%; }
+  canvas { position:fixed; top:0; left:0; z-index:-1; }
+
+  header {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:10px 20px; background:rgba(0,0,0,0.5); color:#fff;
+    position:sticky; top:0; z-index:10;
+  }
+  #user-profile { display:flex; align-items:center; gap:10px; }
+  #user-profile img { width:40px; height:40px; border-radius:50%; border:2px solid #fff; object-fit:cover; }
+  #clock { font-weight:bold; margin-left:20px; }
+
+  #game-gallery { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:20px; padding:20px; }
+  .game-card { background:rgba(255,255,255,0.1); border:2px solid rgba(255,255,255,0.3);
+    border-radius:12px; overflow:hidden; text-align:center; color:#fff; transition: transform 0.3s, box-shadow 0.3s;
+    cursor:pointer; backdrop-filter:blur(5px); }
+  .game-card:hover { transform:scale(1.05); box-shadow:0 0 20px #fff; }
+  .game-card img { width:100%; height:100px; object-fit:cover; }
+  .game-card h3 { margin:10px 0; font-size:1em; text-shadow:1px 1px 5px #000; }
+
+  h1.animated-text {
+    font-size:2em; text-align:center; margin:20px 0;
+    background:linear-gradient(90deg, #ff3c3c,#ffeb3c,#3cff3c,#3cfff5,#3c3cff);
+    background-size:300% 300%; -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+    animation:gradientMove 5s linear infinite;
+  }
+  @keyframes gradientMove { 0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%} }
+
+  #ding { position:fixed; top:20px; right:20px; background:#ffeb3c; color:#000;
+    padding:10px 15px; border-radius:10px; font-weight:bold; display:none; box-shadow:0 0 10px #fff; z-index:20; }
+
+  /* Sign-in modal */
+  #signin-modal { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7);
+    display:none; justify-content:center; align-items:center; z-index:50; }
+  #signin-content { background:rgba(0,0,0,0.9); padding:30px; border-radius:15px; color:#fff; width:300px; text-align:center; }
+  #signin-content button { margin-top:10px; padding:8px 15px; border:none; border-radius:8px; cursor:pointer; font-weight:bold; }
+
+  /* Game modal */
+  #game-modal { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.95);
+    display:none; justify-content:center; align-items:center; flex-direction:column; z-index:60; }
+  #game-iframe { width:80%; height:80%; border:none; border-radius:12px; }
+  #game-buttons { margin-top:10px; display:flex; gap:10px; }
+  #game-buttons button { padding:8px 12px; border:none; border-radius:6px; cursor:pointer; font-weight:bold; background:#ffeb3c; color:#000; }
+</style>
+</head>
+<body>
+
+<canvas id="ocean"></canvas>
+
+<header>
+  <div id="logo"><h1 class="animated-text">Basoon</h1></div>
+  <div id="user-profile">
+    <img src="https://via.placeholder.com/40" alt="Profile Picture" id="profile-pic">
+    <span id="username">Guest</span>
+    <span id="clock"></span>
+    <button onclick="showSignIn()">Sign In</button>
+  </div>
+</header>
+
+<main>
+  <div id="game-gallery"></div>
+</main>
+
+<div id="ding">Ding!</div>
+
+<!-- Sign-in modal -->
+<div id="signin-modal">
+  <div id="signin-content">
+    <h2>Sign In</h2>
+    <input type="text" id="username-input" placeholder="Enter username"><br>
+    <button onclick="signIn()">Sign In</button>
+    <button onclick="signInPasswordless()">Passwordless Login</button>
+    <br><br>
+    <button onclick="hideSignIn()">Close</button>
+  </div>
+</div>
+
+<!-- Game modal -->
+<div id="game-modal">
+  <iframe id="game-iframe"></iframe>
+  <div id="game-buttons">
+    <button onclick="closeGame()">Exit Game</button>
+    <button onclick="toggleFullscreen()">Fullscreen</button>
+  </div>
+</div>
+
+<script>
+// Ocean animation
+const canvas=document.getElementById('ocean');
+const ctx=canvas.getContext('2d');
+canvas.width=window.innerWidth; canvas.height=window.innerHeight;
+let waves=[];
+for(let i=0;i<100;i++){ waves.push({y:Math.random()*canvas.height, speed:Math.random()*0.5+0.2, amplitude:Math.random()*20+10, phase:Math.random()*Math.PI*2}); }
+function drawWaves(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle='rgba(255,255,255,0.3)';
+  waves.forEach(w=>{ ctx.beginPath(); ctx.moveTo(0,w.y);
+    for(let x=0;x<canvas.width;x++){
+      ctx.lineTo(x, w.y + Math.sin(x*0.02 + w.phase)*w.amplitude);
+    }
+    ctx.lineTo(canvas.width, canvas.height);
+    ctx.lineTo(0,canvas.height);
+    ctx.closePath(); ctx.fill();
+    w.phase+=w.speed;
+  });
+  requestAnimationFrame(drawWaves);
+}
+drawWaves();
+window.addEventListener('resize',()=>{canvas.width=window.innerWidth; canvas.height=window.innerHeight;});
+
+// Clock (12‑hour ET)
+function updateClock(){
+  const now=new Date();
+  const est=new Date(now.toLocaleString("en-US",{timeZone:"America/New_York"}));
+  let h=est.getHours(), m=est.getMinutes().toString().padStart(2,'0'), s=est.getSeconds().toString().padStart(2,'0');
+  const ampm = h>=12?'PM':'AM'; h=h%12; h=h?h:12;
+  document.getElementById('clock').innerText=`${h}:${m}:${s} ${ampm} ET`;
+}
+setInterval(updateClock,1000); updateClock();
+
+// Sign‑in logic
+function showSignIn(){ document.getElementById('signin-modal').style.display='flex'; }
+function hideSignIn(){ document.getElementById('signin-modal').style.display='none'; }
+function signIn(){
+  const u = document.getElementById('username-input').value.trim();
+  if(u){ document.getElementById('username').innerText=u; hideSignIn(); }
+  else alert("Enter a username");
+}
+function signInPasswordless(){
+  const u = prompt("Enter username");
+  if(u){ document.getElementById('username').innerText=u; hideSignIn(); }
+}
+
+// Games array (50+ browser games with thumbnails and URLs)
+const games=[
+  {title:"Veck.io", thumbnail:"https://upload.wikimedia.org/wikipedia/en/1/19/Veck.io_cover.png", url:"https://veck.io"},
+  {title:"Rocket Goal", thumbnail:"https://i.imgur.com/4wzMliS.png", url:"https://rocketgoal.io"},
+  {title:"Slither.io", thumbnail:"https://upload.wikimedia.org/wikipedia/en/f/f6/Slither.io_cover.png", url:"https://slither.io"},
+  {title:"Agar.io", thumbnail:"https://upload.wikimedia.org/wikipedia/en/8/81/Agar.io_cover.png", url:"https://agar.io"},
+  {title:"Diep.io", thumbnail:"https://upload.wikimedia.org/wikipedia/en/0/02/Diep.io_cover.png", url:"https://diep.io"},
+  {title:"Krunker.io", thumbnail:"https://upload.wikimedia.org/wikipedia/en/5/57/Krunker_cover.png", url:"https://krunker.io"},
+  {title:"Bonk.io", thumbnail:"https://upload.wikimedia.org/wikipedia/en/c/c1/Bonk.io_cover.png", url:"https://bonk.io"},
+  {title:"Little Big Snake", thumbnail:"https://upload.wikimedia.org/wikipedia/en/3/36/Little_Big_Snake_cover.png", url:"https://littlebigsnake.com"},
+  {title:"Zombs Royale", thumbnail:"https://upload.wikimedia.org/wikipedia/en/8/84/Zombs_Royale_cover.png", url:"https://zombsroyale.io"},
+  {title:"Surviv.io", thumbnail:"https://upload.wikimedia.org/wikipedia/en/4/42/Surviv.io_cover.png", url:"https://surviv.io"},
+  {title:"Paper.io 2", thumbnail:"https://upload.wikimedia.org/wikipedia/en/0/0f/Paper.io_2_cover.png", url:"https://paper-io.com/2"},
+  {title:"Wormax.io", thumbnail:"https://upload.wikimedia.org/wikipedia/en/2/25/Wormax.io_cover.png", url:"https://wormax.io"},
+  {title:"Hole.io", thumbnail:"https://upload.wikimedia.org/wikipedia/en/3/3f/Hole.io_cover.png", url:"https://hole-io.com"},
+  {title:"Tank Trouble", thumbnail:"https://upload.wikimedia.org/wikipedia/en/f/f5/Tank_Trouble_cover.png", url:"https://tanktrouble.com"},
+  {title:"Superhex.io", thumbnail:"https://upload.wikimedia.org/wikipedia/en/6/60/Superhex.io_cover.png", url:"https://superhex.io"},
+  {title:"Lordz.io", thumbnail:"https://upload.wikimedia.org/wikipedia/en/1/15/Lordz.io_cover.png", url:"https://lordz.io"},
+  {title:"Zombs.io", thumbnail:"https://upload.wikimedia.org/wikipedia/en/f/f9/Zombs.io_cover.png", url:"https://zombs.io"},
+  {title:"Smash Karts", thumbnail:"https://upload.wikimedia.org/wikipedia/en/3/39/Smash_Karts_cover.png", url:"https://smashkarts.com"},
+  {title:"Shell Shockers", thumbnail:"https://upload.wikimedia.org/wikipedia/en/5/54/Shell_Shockers_cover.png", url:"https://shellshock.io"},
+  {title:"Super Smash Flash 2", thumbnail:"https://upload.wikimedia.org/wikipedia/en/2/2d/SSB_Flash_2_cover.png", url:"https://ssbworld.com/ssf2"},
+  {title:"Run 3", thumbnail:"https://upload.wikimedia.org/wikipedia/en/9/9b/Run_3_cover.png", url:"https://run3.io"},
+  {title:"Moto X3M", thumbnail:"https://upload.wikimedia.org/wikipedia/en/0/0b/Moto_X3M_cover.png", url:"https://motox3mgame.com"},
+  {title:"Fireboy and Watergirl", thumbnail:"https://upload.wikimedia.org/wikipedia/en/3/3f/Fireboy_and_Watergirl_cover.png", url:"https://fireboywatergirl.co"},
+  {title:"Geometry Dash", thumbnail:"https://upload.wikimedia.org/wikipedia/en/7/77/Geometry_Dash_cover.png", url:"https://geometrydash.io"},
+  {title:"Stick Fight", thumbnail:"https://upload.wikimedia.org/wikipedia/en/1/10/Stick_Fight_cover.png", url:"https://stickfight.io"},
+  {title:"Uno Online", thumbnail:"https://upload.wikimedia.org/wikipedia/en/8/8d/Uno_cover.png", url:"https://uno-online.org"},
+  {title:"Checkers", thumbnail:"https://upload.wikimedia.org/wikipedia/commons/4/4c/Checkers_board.jpg", url:"https://papergames.io/en/checkers"},
+  {title:"Chess", thumbnail:"https://upload.wikimedia.org/wikipedia/commons/0/09/Chess_Pieces.jpg", url:"https://www.chess.com/play/computer"},
+  {title:"Tetris", thumbnail:"https://upload.wikimedia.org/wikipedia/commons/7/7c/Tetris_Game.jpg", url:"https://tetris.com/play"},
+  {title:"Pacman", thumbnail:"https://upload.wikimedia.org/wikipedia/commons/5/59/Pacman.png", url:"https://pacman.nglogin.com"},
+  {title:"Snake", thumbnail:"https://upload.wikimedia.org/wikipedia/commons/4/4b/Snake_game.png", url:"https://playsnake.org"},
+  {title:"Solitaire", thumbnail:"https://upload.wikimedia.org/wikipedia/commons/3/3a/Klondike_Solitaire.png", url:"https://www.solitr.com"},
+  {title:"Minesweeper", thumbnail:"https://upload.wikimedia.org/wikipedia/commons/5/5b/Minesweeper_game.png", url:"https://minesweeperonline.com"},
+  {title:"Connect Four", thumbnail:"https://upload.wikimedia.org/wikipedia/commons/3/35/Connect_Four.jpg", url:"https://papergames.io/en/connect-four"},
+  {title:"Sudoku", thumbnail:"https://upload.wikimedia.org/wikipedia/commons/1/
+
+(Truncated due to length — continued in next message)
